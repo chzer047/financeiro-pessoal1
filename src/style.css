@@ -1,1 +1,20 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Inter, Arial, sans-serif;
+  background: #ffffff;
+  color: #09090b;
+}
 
+* {
+  box-sizing: border-box;
+}
+
+button {
+  cursor: pointer;
+}
+
+input,
+select {
+  font-size: 16px;
+}
