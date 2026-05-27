@@ -4,7 +4,8 @@ import {
   TrendingUp,
   Target,
   Plus,
-  Trash2
+  Trash2,
+  CreditCard
 } from "lucide-react";
 
 const STORAGE_KEY = "financeiro_pessoal";
@@ -22,6 +23,7 @@ export default function App() {
   const [form, setForm] = useState({
     type: "Despesa",
     category: "Alimentação",
+    paymentMethod: "Cartão de Crédito",
     description: "",
     amount: ""
   });
@@ -62,10 +64,19 @@ export default function App() {
       .filter((item) => item.type === "Despesa")
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
+    const creditCard = transactions
+      .filter(
+        (item) =>
+          item.paymentMethod ===
+          "Cartão de Crédito"
+      )
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+
     return {
       income,
       expense,
-      balance: income - expense
+      balance: income - expense,
+      creditCard
     };
   }, [transactions]);
 
@@ -83,6 +94,8 @@ export default function App() {
     setForm({
       type: "Despesa",
       category: "Alimentação",
+      paymentMethod:
+        "Cartão de Crédito",
       description: "",
       amount: ""
     });
@@ -150,6 +163,12 @@ export default function App() {
           title="Saldo"
           value={money(totals.balance)}
         />
+
+        <Card
+          icon={<CreditCard size={22} />}
+          title="Cartão de Crédito"
+          value={money(totals.creditCard)}
+        />
       </section>
 
       <section className="panel">
@@ -192,13 +211,37 @@ export default function App() {
             <option>Outros</option>
           </select>
 
+          <select
+            value={form.paymentMethod}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                paymentMethod:
+                  e.target.value
+              })
+            }
+          >
+            <option>
+              Cartão de Crédito
+            </option>
+
+            <option>Pix</option>
+
+            <option>Dinheiro</option>
+
+            <option>
+              Cartão de Débito
+            </option>
+          </select>
+
           <input
             placeholder="Descrição"
             value={form.description}
             onChange={(e) =>
               setForm({
                 ...form,
-                description: e.target.value
+                description:
+                  e.target.value
               })
             }
           />
@@ -349,7 +392,8 @@ export default function App() {
 
                 <p>
                   {item.category} •{" "}
-                  {item.type}
+                  {item.type} •{" "}
+                  {item.paymentMethod}
                 </p>
               </div>
 
