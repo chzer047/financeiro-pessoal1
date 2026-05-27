@@ -21,7 +21,7 @@ export default function App() {
 
   const [form, setForm] = useState({
     type: "Despesa",
-    category: "",
+    category: "Alimentação",
     description: "",
     amount: ""
   });
@@ -82,7 +82,7 @@ export default function App() {
 
     setForm({
       type: "Despesa",
-      category: "",
+      category: "Alimentação",
       description: "",
       amount: ""
     });
@@ -104,6 +104,25 @@ export default function App() {
       target: "",
       current: ""
     });
+  }
+
+  function addMoneyToGoal(id, value) {
+    if (!value) return;
+
+    setGoals(
+      goals.map((goal) => {
+        if (goal.id === id) {
+          return {
+            ...goal,
+            current:
+              Number(goal.current) +
+              Number(value)
+          };
+        }
+
+        return goal;
+      })
+    );
   }
 
   return (
@@ -150,8 +169,7 @@ export default function App() {
             <option>Receita</option>
           </select>
 
-          <input
-            placeholder="Categoria"
+          <select
             value={form.category}
             onChange={(e) =>
               setForm({
@@ -159,7 +177,20 @@ export default function App() {
                 category: e.target.value
               })
             }
-          />
+          >
+            <option>Alimentação</option>
+            <option>Mercado</option>
+            <option>Combustível</option>
+            <option>Pedágio</option>
+            <option>Roupa</option>
+            <option>Saúde</option>
+            <option>Academia</option>
+            <option>Lazer</option>
+            <option>Viagem</option>
+            <option>Assinaturas</option>
+            <option>Moradia</option>
+            <option>Outros</option>
+          </select>
 
           <input
             placeholder="Descrição"
@@ -220,7 +251,7 @@ export default function App() {
 
           <input
             type="number"
-            placeholder="Atual"
+            placeholder="Valor inicial"
             value={goalForm.current}
             onChange={(e) =>
               setGoalForm({
@@ -276,6 +307,23 @@ export default function App() {
                     className="progress-fill"
                     style={{
                       width: `${percent}%`
+                    }}
+                  />
+                </div>
+
+                <div className="goal-add">
+                  <input
+                    type="number"
+                    placeholder="Adicionar valor"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        addMoneyToGoal(
+                          goal.id,
+                          e.target.value
+                        );
+
+                        e.target.value = "";
+                      }
                     }}
                   />
                 </div>
@@ -447,6 +495,10 @@ export default function App() {
         .progress-fill {
           height: 100%;
           background: #09090b;
+        }
+
+        .goal-add {
+          margin-top: 14px;
         }
       `}</style>
     </div>
