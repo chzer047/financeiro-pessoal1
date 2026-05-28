@@ -215,8 +215,7 @@ export default function App() {
   }, [
     monthTransactions,
     fixedExpenses
-  ]);
-    const cardPercent =
+  ]);    const cardPercent =
     cardLimit > 0
       ? Math.round(
           (totals.creditCard /
