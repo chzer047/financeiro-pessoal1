@@ -5,10 +5,35 @@ import {
   Target,
   Plus,
   Trash2,
-  CreditCard
+  CreditCard,
+  Filter,
+  AlertTriangle
 } from "lucide-react";
 
-const STORAGE_KEY = "financeiro_pessoal";
+const STORAGE_KEY = "financeiro_pessoal_v2";
+
+const categories = [
+  "Alimentação",
+  "Mercado",
+  "Combustível",
+  "Pedágio",
+  "Saída",
+  "Roupa",
+  "Saúde",
+  "Academia",
+  "Lazer",
+  "Viagem",
+  "Assinaturas",
+  "Moradia",
+  "Outros"
+];
+
+const paymentMethods = [
+  "Cartão de Crédito",
+  "Pix",
+  "Dinheiro",
+  "Cartão de Débito"
+];
 
 const money = (value) =>
   new Intl.NumberFormat("pt-BR", {
@@ -16,11 +41,21 @@ const money = (value) =>
     currency: "BRL"
   }).format(Number(value || 0));
 
+const currentMonth = new Date().toISOString().slice(0, 7);
+
 export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [cardLimit, setCardLimit] = useState(800);
+
+  const [filters, setFilters] = useState({
+    type: "Todos",
+    category: "Todas",
+    paymentMethod: "Todos"
+  });
 
   const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
     type: "Despesa",
     category: "Alimentação",
     paymentMethod: "Cartão de Crédito",
@@ -36,39 +71,39 @@ export default function App() {
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-
     if (saved) {
       const data = JSON.parse(saved);
-
       setTransactions(data.transactions || []);
       setGoals(data.goals || []);
+      setCardLimit(data.cardLimit || 800);
     }
   }, []);
 
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({
-        transactions,
-        goals
-      })
+      JSON.stringify({ transactions, goals, cardLimit })
     );
-  }, [transactions, goals]);
+  }, [transactions, goals, cardLimit]);
+
+  const monthTransactions = transactions.filter((item) =>
+    item.date?.startsWith(currentMonth)
+  );
 
   const totals = useMemo(() => {
-    const income = transactions
+    const income = monthTransactions
       .filter((item) => item.type === "Receita")
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const expense = transactions
+    const expense = monthTransactions
       .filter((item) => item.type === "Despesa")
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const creditCard = transactions
+    const creditCard = monthTransactions
       .filter(
         (item) =>
-          item.paymentMethod ===
-          "Cartão de Crédito"
+          item.paymentMethod === "Cartão de Crédito" &&
+          item.type === "Despesa"
       )
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
@@ -78,7 +113,29 @@ export default function App() {
       balance: income - expense,
       creditCard
     };
-  }, [transactions]);
+  }, [monthTransactions]);
+
+  const cardPercent = cardLimit > 0 ? Math.round((totals.creditCard / cardLimit) * 100) : 0;
+
+  const filteredTransactions = transactions.filter((item) => {
+    const typeOk = filters.type === "Todos" || item.type === filters.type;
+    const categoryOk = filters.category === "Todas" || item.category === filters.category;
+    const paymentOk =
+      filters.paymentMethod === "Todos" ||
+      item.paymentMethod === filters.paymentMethod;
+
+    return typeOk && categoryOk && paymentOk;
+  });
+
+  const categoryTotals = categories
+    .map((cat) => {
+      const total = monthTransactions
+        .filter((item) => item.category === cat && item.type === "Despesa")
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+
+      return { category: cat, total };
+    })
+    .filter((item) => item.total > 0);
 
   function addTransaction() {
     if (!form.description || !form.amount) return;
@@ -86,16 +143,17 @@ export default function App() {
     setTransactions([
       {
         id: crypto.randomUUID(),
-        ...form
+        ...form,
+        amount: Number(form.amount)
       },
       ...transactions
     ]);
 
     setForm({
+      date: new Date().toISOString().slice(0, 10),
       type: "Despesa",
       category: "Alimentação",
-      paymentMethod:
-        "Cartão de Crédito",
+      paymentMethod: "Cartão de Crédito",
       description: "",
       amount: ""
     });
@@ -107,7 +165,10 @@ export default function App() {
     setGoals([
       {
         id: crypto.randomUUID(),
-        ...goalForm
+        name: goalForm.name,
+        target: Number(goalForm.target),
+        current: Number(goalForm.current || 0),
+        addValue: ""
       },
       ...goals
     ]);
@@ -119,22 +180,26 @@ export default function App() {
     });
   }
 
-  function addMoneyToGoal(id, value) {
-    if (!value) return;
-
+  function addMoneyToGoal(id) {
     setGoals(
       goals.map((goal) => {
         if (goal.id === id) {
           return {
             ...goal,
-            current:
-              Number(goal.current) +
-              Number(value)
+            current: Number(goal.current) + Number(goal.addValue || 0),
+            addValue: ""
           };
         }
-
         return goal;
       })
+    );
+  }
+
+  function updateGoalAddValue(id, value) {
+    setGoals(
+      goals.map((goal) =>
+        goal.id === id ? { ...goal, addValue: value } : goal
+      )
     );
   }
 
@@ -142,47 +207,64 @@ export default function App() {
     <div className="app">
       <header className="header">
         <h1>Financeiro Pessoal</h1>
-        <p>Seu sistema financeiro privado</p>
+        <p>Controle real da sua vida financeira</p>
       </header>
 
       <section className="cards">
-        <Card
-          icon={<Wallet size={22} />}
-          title="Receitas"
-          value={money(totals.income)}
+        <Card icon={<Wallet />} title="Receitas do mês" value={money(totals.income)} />
+        <Card icon={<TrendingUp />} title="Despesas do mês" value={money(totals.expense)} />
+        <Card icon={<Target />} title="Saldo do mês" value={money(totals.balance)} />
+        <Card icon={<CreditCard />} title="Cartão no mês" value={money(totals.creditCard)} />
+      </section>
+
+      <section className="panel">
+        <h2>Limite psicológico do cartão</h2>
+
+        <input
+          type="number"
+          value={cardLimit}
+          onChange={(e) => setCardLimit(Number(e.target.value))}
+          placeholder="Ex: 800"
         />
 
-        <Card
-          icon={<TrendingUp size={22} />}
-          title="Despesas"
-          value={money(totals.expense)}
-        />
+        <div className="progress">
+          <div
+            className={
+              cardPercent >= 100
+                ? "progress-fill danger"
+                : cardPercent >= 70
+                ? "progress-fill warning"
+                : "progress-fill"
+            }
+            style={{ width: `${Math.min(cardPercent, 100)}%` }}
+          />
+        </div>
 
-        <Card
-          icon={<Target size={22} />}
-          title="Saldo"
-          value={money(totals.balance)}
-        />
+        <p className="muted">
+          Usado: {money(totals.creditCard)} de {money(cardLimit)} — {cardPercent}%
+        </p>
 
-        <Card
-          icon={<CreditCard size={22} />}
-          title="Cartão de Crédito"
-          value={money(totals.creditCard)}
-        />
+        {cardPercent >= 70 && (
+          <div className="alert">
+            <AlertTriangle size={18} />
+            Atenção: seu cartão já passou de 70% do limite psicológico.
+          </div>
+        )}
       </section>
 
       <section className="panel">
         <h2>Novo lançamento</h2>
 
         <div className="form">
+          <input
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+
           <select
             value={form.type}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                type: e.target.value
-              })
-            }
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
           >
             <option>Despesa</option>
             <option>Receita</option>
@@ -190,72 +272,35 @@ export default function App() {
 
           <select
             value={form.category}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                category: e.target.value
-              })
-            }
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
           >
-            <option>Alimentação</option>
-            <option>Mercado</option>
-            <option>Combustível</option>
-            <option>Pedágio</option>
-            <option>Roupa</option>
-            <option>Saúde</option>
-            <option>Academia</option>
-            <option>Lazer</option>
-            <option>Viagem</option>
-            <option>Assinaturas</option>
-            <option>Moradia</option>
-            <option>Outros</option>
+            {categories.map((cat) => (
+              <option key={cat}>{cat}</option>
+            ))}
           </select>
 
           <select
             value={form.paymentMethod}
             onChange={(e) =>
-              setForm({
-                ...form,
-                paymentMethod:
-                  e.target.value
-              })
+              setForm({ ...form, paymentMethod: e.target.value })
             }
           >
-            <option>
-              Cartão de Crédito
-            </option>
-
-            <option>Pix</option>
-
-            <option>Dinheiro</option>
-
-            <option>
-              Cartão de Débito
-            </option>
+            {paymentMethods.map((pay) => (
+              <option key={pay}>{pay}</option>
+            ))}
           </select>
 
           <input
             placeholder="Descrição"
             value={form.description}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                description:
-                  e.target.value
-              })
-            }
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
 
           <input
             type="number"
             placeholder="Valor"
             value={form.amount}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                amount: e.target.value
-              })
-            }
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
           />
 
           <button onClick={addTransaction}>
@@ -266,29 +311,38 @@ export default function App() {
       </section>
 
       <section className="panel">
+        <h2>Gastos por categoria no mês</h2>
+
+        <div className="category-list">
+          {categoryTotals.map((item) => (
+            <div className="category-item" key={item.category}>
+              <span>{item.category}</span>
+              <strong>{money(item.total)}</strong>
+            </div>
+          ))}
+
+          {categoryTotals.length === 0 && (
+            <p className="muted">Nenhum gasto registrado neste mês.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Metas</h2>
 
         <div className="form">
           <input
             placeholder="Nome da meta"
             value={goalForm.name}
-            onChange={(e) =>
-              setGoalForm({
-                ...goalForm,
-                name: e.target.value
-              })
-            }
+            onChange={(e) => setGoalForm({ ...goalForm, name: e.target.value })}
           />
 
           <input
             type="number"
-            placeholder="Meta"
+            placeholder="Valor da meta"
             value={goalForm.target}
             onChange={(e) =>
-              setGoalForm({
-                ...goalForm,
-                target: e.target.value
-              })
+              setGoalForm({ ...goalForm, target: e.target.value })
             }
           />
 
@@ -297,48 +351,36 @@ export default function App() {
             placeholder="Valor inicial"
             value={goalForm.current}
             onChange={(e) =>
-              setGoalForm({
-                ...goalForm,
-                current: e.target.value
-              })
+              setGoalForm({ ...goalForm, current: e.target.value })
             }
           />
 
           <button onClick={addGoal}>
             <Plus size={18} />
-            Salvar
+            Salvar meta
           </button>
         </div>
 
         <div className="goals">
           {goals.map((goal) => {
             const percent =
-              (Number(goal.current) /
-                Number(goal.target)) *
-              100;
+              goal.target > 0
+                ? Math.min(100, Math.round((goal.current / goal.target) * 100))
+                : 0;
 
             return (
-              <div
-                className="goal"
-                key={goal.id}
-              >
+              <div className="goal" key={goal.id}>
                 <div className="goal-top">
                   <div>
                     <h3>{goal.name}</h3>
-
                     <p>
-                      {money(goal.current)} /{" "}
-                      {money(goal.target)}
+                      {money(goal.current)} / {money(goal.target)} — {percent}%
                     </p>
                   </div>
 
                   <button
                     onClick={() =>
-                      setGoals(
-                        goals.filter(
-                          (x) => x.id !== goal.id
-                        )
-                      )
+                      setGoals(goals.filter((x) => x.id !== goal.id))
                     }
                   >
                     <Trash2 size={18} />
@@ -346,29 +388,20 @@ export default function App() {
                 </div>
 
                 <div className="progress">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${percent}%`
-                    }}
-                  />
+                  <div className="progress-fill" style={{ width: `${percent}%` }} />
                 </div>
 
                 <div className="goal-add">
                   <input
                     type="number"
                     placeholder="Adicionar valor"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        addMoneyToGoal(
-                          goal.id,
-                          e.target.value
-                        );
-
-                        e.target.value = "";
-                      }
-                    }}
+                    value={goal.addValue || ""}
+                    onChange={(e) => updateGoalAddValue(goal.id, e.target.value)}
                   />
+
+                  <button onClick={() => addMoneyToGoal(goal.id)}>
+                    Adicionar na meta
+                  </button>
                 </div>
               </div>
             );
@@ -377,37 +410,67 @@ export default function App() {
       </section>
 
       <section className="panel">
+        <h2>
+          <Filter size={18} /> Filtros
+        </h2>
+
+        <div className="form">
+          <select
+            value={filters.type}
+            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+          >
+            <option>Todos</option>
+            <option>Despesa</option>
+            <option>Receita</option>
+          </select>
+
+          <select
+            value={filters.category}
+            onChange={(e) =>
+              setFilters({ ...filters, category: e.target.value })
+            }
+          >
+            <option>Todas</option>
+            {categories.map((cat) => (
+              <option key={cat}>{cat}</option>
+            ))}
+          </select>
+
+          <select
+            value={filters.paymentMethod}
+            onChange={(e) =>
+              setFilters({ ...filters, paymentMethod: e.target.value })
+            }
+          >
+            <option>Todos</option>
+            {paymentMethods.map((pay) => (
+              <option key={pay}>{pay}</option>
+            ))}
+          </select>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Lançamentos</h2>
 
         <div className="transactions">
-          {transactions.map((item) => (
-            <div
-              className="transaction"
-              key={item.id}
-            >
+          {filteredTransactions.map((item) => (
+            <div className="transaction" key={item.id}>
               <div>
-                <strong>
-                  {item.description}
-                </strong>
-
+                <strong>{item.description}</strong>
                 <p>
-                  {item.category} •{" "}
-                  {item.type} •{" "}
+                  {item.date} • {item.category} • {item.type} •{" "}
                   {item.paymentMethod}
                 </p>
               </div>
 
               <div className="transaction-right">
-                <strong>
-                  {money(item.amount)}
-                </strong>
+                <strong>{money(item.amount)}</strong>
 
                 <button
                   onClick={() =>
                     setTransactions(
-                      transactions.filter(
-                        (x) => x.id !== item.id
-                      )
+                      transactions.filter((x) => x.id !== item.id)
                     )
                   }
                 >
@@ -416,6 +479,10 @@ export default function App() {
               </div>
             </div>
           ))}
+
+          {filteredTransactions.length === 0 && (
+            <p className="muted">Nenhum lançamento encontrado.</p>
+          )}
         </div>
       </section>
 
@@ -431,34 +498,46 @@ export default function App() {
           font-size: 40px;
         }
 
-        .header p {
+        .header p,
+        .muted {
           color: #71717a;
         }
 
         .cards {
           display: grid;
-          grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
+          grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
           gap: 16px;
           margin-top: 30px;
         }
 
-        .card {
+        .card,
+        .panel,
+        .goal,
+        .transaction,
+        .category-item {
           border: 1px solid #e4e4e7;
           border-radius: 24px;
           padding: 20px;
         }
 
-        .card-top {
+        .card-top,
+        .goal-top,
+        .transaction,
+        .category-item {
           display: flex;
           justify-content: space-between;
-          margin-bottom: 20px;
+          align-items: center;
+          gap: 12px;
         }
 
         .panel {
-          border: 1px solid #e4e4e7;
-          border-radius: 24px;
-          padding: 20px;
           margin-top: 20px;
+        }
+
+        .panel h2 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
 
         .form {
@@ -471,6 +550,7 @@ export default function App() {
           border: 1px solid #e4e4e7;
           border-radius: 16px;
           padding: 14px;
+          font-size: 16px;
         }
 
         button {
@@ -483,49 +563,6 @@ export default function App() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-        }
-
-        .transactions {
-          display: grid;
-          gap: 12px;
-        }
-
-        .transaction {
-          border: 1px solid #e4e4e7;
-          border-radius: 18px;
-          padding: 16px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .transaction p {
-          color: #71717a;
-          margin: 4px 0 0;
-        }
-
-        .transaction-right {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .goals {
-          margin-top: 20px;
-          display: grid;
-          gap: 16px;
-        }
-
-        .goal {
-          border: 1px solid #e4e4e7;
-          border-radius: 20px;
-          padding: 16px;
-        }
-
-        .goal-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
         }
 
         .progress {
@@ -541,7 +578,45 @@ export default function App() {
           background: #09090b;
         }
 
+        .progress-fill.warning {
+          background: #a16207;
+        }
+
+        .progress-fill.danger {
+          background: #991b1b;
+        }
+
+        .alert {
+          margin-top: 14px;
+          border: 1px solid #e4e4e7;
+          border-radius: 16px;
+          padding: 14px;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .transactions,
+        .goals,
+        .category-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .transaction p {
+          color: #71717a;
+          margin: 4px 0 0;
+        }
+
+        .transaction-right {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
         .goal-add {
+          display: grid;
+          gap: 10px;
           margin-top: 14px;
         }
       `}</style>
@@ -549,18 +624,13 @@ export default function App() {
   );
 }
 
-function Card({
-  icon,
-  title,
-  value
-}) {
+function Card({ icon, title, value }) {
   return (
     <div className="card">
       <div className="card-top">
         <span>{title}</span>
         {icon}
       </div>
-
       <h2>{value}</h2>
     </div>
   );
