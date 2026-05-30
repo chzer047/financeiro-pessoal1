@@ -11,10 +11,12 @@ import {
   CalendarDays,
   Brain,
   ArrowUpCircle,
-  ArrowDownCircle
+  ArrowDownCircle,
+  Pencil,
+  X
 } from "lucide-react";
 
-const STORAGE_KEY = "financeiro_pessoal_mentor_v1";
+const STORAGE_KEY = "financeiro_pessoal_mentor_v2";
 
 const categories = [
   "Alimentação",
@@ -32,7 +34,12 @@ const categories = [
   "Outros"
 ];
 
-const paymentMethods = ["Cartão de Crédito", "Pix", "Dinheiro", "Cartão de Débito"];
+const paymentMethods = [
+  "Cartão de Crédito",
+  "Pix",
+  "Dinheiro",
+  "Cartão de Débito"
+];
 
 const money = (value) =>
   new Intl.NumberFormat("pt-BR", {
@@ -48,15 +55,19 @@ export default function App() {
   const [goals, setGoals] = useState([]);
   const [fixedExpenses, setFixedExpenses] = useState([]);
   const [cardLimit, setCardLimit] = useState(800);
+  const [editingId, setEditingId] = useState(null);
 
-  const [form, setForm] = useState({
+  const emptyForm = {
     date: today,
     type: "Despesa",
     category: "Alimentação",
     paymentMethod: "Cartão de Crédito",
     description: "",
-    amount: ""
-  });
+    amount: "",
+    installments: "1"
+  };
+
+  const [form, setForm] = useState(emptyForm);
 
   const [goalForm, setGoalForm] = useState({
     name: "",
@@ -71,7 +82,9 @@ export default function App() {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const oldSaved = localStorage.getItem("financeiro_pessoal_mentor_v1");
+    const saved = localStorage.getItem(STORAGE_KEY) || oldSaved;
+
     if (saved) {
       const data = JSON.parse(saved);
       setTransactions(data.transactions || []);
@@ -103,17 +116,29 @@ export default function App() {
       .filter((item) => item.paymentMethod === "Cartão de Crédito")
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const fixed = fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+    const fixed = fixedExpenses.reduce(
+      (sum, item) => sum + Number(item.amount),
+      0
+    );
+
+    const futureInstallments = transactions
+      .filter(
+        (item) =>
+          item.paymentMethod === "Cartão de Crédito" &&
+          Number(item.installments || 1) > 1
+      )
+      .reduce((sum, item) => sum + Number(item.amount), 0);
 
     return {
       income,
       expense,
       creditCard,
       fixed,
+      futureInstallments,
       balance: income - expense,
       realBalance: income - expense - fixed
     };
-  }, [incomes, expenses, fixedExpenses]);
+  }, [incomes, expenses, fixedExpenses, transactions]);
 
   const cardPercent =
     cardLimit > 0 ? Math.round((totals.creditCard / cardLimit) * 100) : 0;
@@ -144,14 +169,20 @@ export default function App() {
     if (totals.realBalance < 0) {
       messages.push({
         level: "crítico",
-        text: `Sua sobra real está negativa em ${money(Math.abs(totals.realBalance))}. Antes de gastar com lazer ou compras, o foco precisa ser segurar variáveis e proteger o básico.`
+        text: `Sua sobra real está negativa em ${money(
+          Math.abs(totals.realBalance)
+        )}. Antes de gastar com lazer ou compras, o foco precisa ser segurar variáveis e proteger o básico.`
       });
     }
 
     if (cardPercent >= 100) {
       messages.push({
         level: "crítico",
-        text: `Seu cartão passou do limite psicológico definido. Você usou ${money(totals.creditCard)} de ${money(cardLimit)}. Até virar o mês, evite crédito e use apenas dinheiro/Pix para o essencial.`
+        text: `Seu cartão passou do limite psicológico definido. Você usou ${money(
+          totals.creditCard
+        )} de ${money(
+          cardLimit
+        )}. Até virar o mês, evite crédito e use apenas dinheiro/Pix para o essencial.`
       });
     } else if (cardPercent >= 70) {
       messages.push({
@@ -160,17 +191,32 @@ export default function App() {
       });
     }
 
+    if (totals.futureInstallments > 0) {
+      messages.push({
+        level: "atenção",
+        text: `Você tem ${money(
+          totals.futureInstallments
+        )} registrados em compras parceladas no cartão. Isso não é dívida do mês: é compromisso futuro.`
+      });
+    }
+
     if (totals.income > 0 && totals.fixed / totals.income > 0.6) {
       messages.push({
         level: "atenção",
-        text: `Seus gastos fixos comprometem ${Math.round((totals.fixed / totals.income) * 100)}% da sua renda do mês. Isso deixa pouca margem para imprevistos.`
+        text: `Seus gastos fixos comprometem ${Math.round(
+          (totals.fixed / totals.income) * 100
+        )}% da sua renda do mês. Isso deixa pouca margem para imprevistos.`
       });
     }
 
     if (biggestCategory && biggestCategory.total > 0) {
       messages.push({
         level: "ideia",
-        text: `Seu maior vazamento do mês está em ${biggestCategory.category}: ${money(biggestCategory.total)}. Se reduzir 20% nessa categoria, você libera ${money(biggestCategory.total * 0.2)}.`
+        text: `Seu maior vazamento do mês está em ${
+          biggestCategory.category
+        }: ${money(biggestCategory.total)}. Se reduzir 20% nessa categoria, você libera ${money(
+          biggestCategory.total * 0.2
+        )}.`
       });
     }
 
@@ -185,7 +231,9 @@ export default function App() {
     if (totals.realBalance > 0 && totals.income > 0) {
       messages.push({
         level: "positivo",
-        text: `Você tem sobra real positiva de ${money(totals.realBalance)}. Uma divisão segura seria: 50% reserva/dívida, 30% metas e 20% livre.`
+        text: `Você tem sobra real positiva de ${money(
+          totals.realBalance
+        )}. Uma divisão segura seria: 50% reserva/dívida, 30% metas e 20% livre.`
       });
     }
 
@@ -199,26 +247,60 @@ export default function App() {
     return messages;
   }, [totals, cardLimit, cardPercent, biggestCategory, goals]);
 
-  function addTransaction() {
+  function saveTransaction() {
     if (!form.description || !form.amount) return;
 
-    setTransactions([
-      {
-        id: crypto.randomUUID(),
-        ...form,
-        amount: Number(form.amount)
-      },
-      ...transactions
-    ]);
+    const normalized = {
+      ...form,
+      amount: Number(form.amount),
+      installments:
+        form.paymentMethod === "Cartão de Crédito"
+          ? Number(form.installments || 1)
+          : 1
+    };
 
+    if (editingId) {
+      setTransactions(
+        transactions.map((item) =>
+          item.id === editingId ? { ...item, ...normalized } : item
+        )
+      );
+      setEditingId(null);
+    } else {
+      setTransactions([
+        {
+          id: crypto.randomUUID(),
+          ...normalized
+        },
+        ...transactions
+      ]);
+    }
+
+    setForm(emptyForm);
+  }
+
+  function editTransaction(item) {
+    setEditingId(item.id);
     setForm({
-      date: today,
-      type: "Despesa",
-      category: "Alimentação",
-      paymentMethod: "Cartão de Crédito",
-      description: "",
-      amount: ""
+      date: item.date || today,
+      type: item.type || "Despesa",
+      category: item.category || "Alimentação",
+      paymentMethod: item.paymentMethod || "Cartão de Crédito",
+      description: item.description || "",
+      amount: String(item.amount || ""),
+      installments: String(item.installments || 1)
     });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(emptyForm);
+  }
+
+  function deleteTransaction(id) {
+    setTransactions(transactions.filter((item) => item.id !== id));
   }
 
   function addGoal() {
@@ -273,7 +355,9 @@ export default function App() {
       <header className="header">
         <p className="worldcup">🇧🇷 Brasil rumo a 2026</p>
         <h1>Financeiro Pessoal</h1>
-        <p className="subtitle">Controle real, mentor financeiro e histórico do seu mês.</p>
+        <p className="subtitle">
+          Controle real, mentor financeiro, histórico, cartão e parcelas futuras.
+        </p>
       </header>
 
       <section className="cards">
@@ -286,7 +370,9 @@ export default function App() {
       </section>
 
       <section className="panel mentor">
-        <h2><Brain size={18} /> Mentor Financeiro</h2>
+        <h2>
+          <Brain size={18} /> Mentor Financeiro
+        </h2>
         <div className="mentor-list">
           {mentorMessages.map((msg, index) => (
             <div className={`mentor-msg ${msg.level}`} key={index}>
@@ -298,7 +384,9 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <h2><CreditCard size={18} /> Limite psicológico do cartão</h2>
+        <h2>
+          <CreditCard size={18} /> Limite psicológico do cartão
+        </h2>
         <input
           type="number"
           value={cardLimit}
@@ -316,7 +404,9 @@ export default function App() {
             style={{ width: `${Math.min(cardPercent, 100)}%` }}
           />
         </div>
-        <p className="muted">{money(totals.creditCard)} de {money(cardLimit)} • {cardPercent}%</p>
+        <p className="muted">
+          {money(totals.creditCard)} de {money(cardLimit)} • {cardPercent}%
+        </p>
         {cardPercent >= 70 && (
           <div className="alert">
             <AlertTriangle size={18} />
@@ -326,31 +416,110 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <h2><Plus size={18} /> Novo lançamento</h2>
+        <h2>
+          {editingId ? <Pencil size={18} /> : <Plus size={18} />}
+          {editingId ? "Editar lançamento" : "Novo lançamento"}
+        </h2>
         <div className="form">
-          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          <input
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+
+          <select
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
+          >
             <option>Despesa</option>
             <option>Receita</option>
           </select>
-          <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-            {categories.map((cat) => <option key={cat}>{cat}</option>)}
+
+          <select
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+          >
+            {categories.map((cat) => (
+              <option key={cat}>{cat}</option>
+            ))}
           </select>
-          <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}>
-            {paymentMethods.map((pay) => <option key={pay}>{pay}</option>)}
+
+          <select
+            value={form.paymentMethod}
+            onChange={(e) =>
+              setForm({ ...form, paymentMethod: e.target.value })
+            }
+          >
+            {paymentMethods.map((pay) => (
+              <option key={pay}>{pay}</option>
+            ))}
           </select>
-          <input placeholder="Descrição" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <input type="number" placeholder="Valor" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <button onClick={addTransaction}><Plus size={18} />Adicionar</button>
+
+          <input
+            placeholder="Descrição"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+
+          <input
+            type="number"
+            placeholder="Valor"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          />
+
+          {form.paymentMethod === "Cartão de Crédito" && (
+            <input
+              type="number"
+              min="1"
+              placeholder="Quantidade de parcelas"
+              value={form.installments}
+              onChange={(e) =>
+                setForm({ ...form, installments: e.target.value })
+              }
+            />
+          )}
+
+          <button onClick={saveTransaction}>
+            {editingId ? "Salvar alteração" : "Adicionar"}
+          </button>
+
+          {editingId && (
+            <button className="secondary" onClick={cancelEdit}>
+              <X size={18} />
+              Cancelar edição
+            </button>
+          )}
         </div>
       </section>
 
       <section className="panel">
-        <h2><CalendarDays size={18} /> Gastos Fixos</h2>
+        <h2>
+          <CalendarDays size={18} /> Gastos Fixos
+        </h2>
         <div className="form">
-          <input placeholder="Nome do gasto fixo" value={fixedForm.name} onChange={(e) => setFixedForm({ ...fixedForm, name: e.target.value })} />
-          <input type="number" placeholder="Valor" value={fixedForm.amount} onChange={(e) => setFixedForm({ ...fixedForm, amount: e.target.value })} />
-          <input placeholder="Dia de vencimento" value={fixedForm.dueDay} onChange={(e) => setFixedForm({ ...fixedForm, dueDay: e.target.value })} />
+          <input
+            placeholder="Nome do gasto fixo"
+            value={fixedForm.name}
+            onChange={(e) =>
+              setFixedForm({ ...fixedForm, name: e.target.value })
+            }
+          />
+          <input
+            type="number"
+            placeholder="Valor"
+            value={fixedForm.amount}
+            onChange={(e) =>
+              setFixedForm({ ...fixedForm, amount: e.target.value })
+            }
+          />
+          <input
+            placeholder="Dia de vencimento"
+            value={fixedForm.dueDay}
+            onChange={(e) =>
+              setFixedForm({ ...fixedForm, dueDay: e.target.value })
+            }
+          />
           <button onClick={addFixedExpense}>Adicionar fixo</button>
         </div>
 
@@ -363,7 +532,13 @@ export default function App() {
               </div>
               <div className="transaction-right">
                 <strong>{money(item.amount)}</strong>
-                <button onClick={() => setFixedExpenses(fixedExpenses.filter((x) => x.id !== item.id))}>
+                <button
+                  onClick={() =>
+                    setFixedExpenses(
+                      fixedExpenses.filter((x) => x.id !== item.id)
+                    )
+                  }
+                >
                   <Trash2 size={18} />
                 </button>
               </div>
@@ -385,41 +560,87 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <h2><Target size={18} /> Metas</h2>
+        <h2>
+          <Target size={18} /> Metas
+        </h2>
         <div className="form">
-          <input placeholder="Nome da meta" value={goalForm.name} onChange={(e) => setGoalForm({ ...goalForm, name: e.target.value })} />
-          <input type="number" placeholder="Valor da meta" value={goalForm.target} onChange={(e) => setGoalForm({ ...goalForm, target: e.target.value })} />
-          <input type="number" placeholder="Valor inicial" value={goalForm.current} onChange={(e) => setGoalForm({ ...goalForm, current: e.target.value })} />
-          <button onClick={addGoal}><Plus size={18} />Salvar meta</button>
+          <input
+            placeholder="Nome da meta"
+            value={goalForm.name}
+            onChange={(e) =>
+              setGoalForm({ ...goalForm, name: e.target.value })
+            }
+          />
+          <input
+            type="number"
+            placeholder="Valor da meta"
+            value={goalForm.target}
+            onChange={(e) =>
+              setGoalForm({ ...goalForm, target: e.target.value })
+            }
+          />
+          <input
+            type="number"
+            placeholder="Valor inicial"
+            value={goalForm.current}
+            onChange={(e) =>
+              setGoalForm({ ...goalForm, current: e.target.value })
+            }
+          />
+          <button onClick={addGoal}>
+            <Plus size={18} />
+            Salvar meta
+          </button>
         </div>
 
         <div className="transactions">
           {goals.map((goal) => {
-            const percent = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
+            const percent =
+              goal.target > 0
+                ? Math.min(100, Math.round((goal.current / goal.target) * 100))
+                : 0;
+
             return (
               <div className="goal" key={goal.id}>
                 <div className="transaction">
                   <div>
                     <strong>{goal.name}</strong>
-                    <p>{money(goal.current)} / {money(goal.target)} • {percent}%</p>
+                    <p>
+                      {money(goal.current)} / {money(goal.target)} • {percent}%
+                    </p>
                   </div>
-                  <button onClick={() => setGoals(goals.filter((x) => x.id !== goal.id))}>
+                  <button
+                    onClick={() => setGoals(goals.filter((x) => x.id !== goal.id))}
+                  >
                     <Trash2 size={18} />
                   </button>
                 </div>
+
                 <div className="progress">
-                  <div className="progress-fill" style={{ width: `${percent}%` }} />
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${percent}%` }}
+                  />
                 </div>
+
                 <div className="goal-add">
                   <input
                     type="number"
                     placeholder="Adicionar valor"
                     value={goal.addValue || ""}
                     onChange={(e) =>
-                      setGoals(goals.map((g) => g.id === goal.id ? { ...g, addValue: e.target.value } : g))
+                      setGoals(
+                        goals.map((g) =>
+                          g.id === goal.id
+                            ? { ...g, addValue: e.target.value }
+                            : g
+                        )
+                      )
                     }
                   />
-                  <button onClick={() => addMoneyToGoal(goal.id)}>Adicionar na meta</button>
+                  <button onClick={() => addMoneyToGoal(goal.id)}>
+                    Adicionar na meta
+                  </button>
                 </div>
               </div>
             );
@@ -429,16 +650,34 @@ export default function App() {
 
       <section className="history-grid">
         <section className="panel">
-          <h2><ArrowUpCircle size={18} /> Histórico de Entradas</h2>
+          <h2>
+            <ArrowUpCircle size={18} /> Histórico de Entradas
+          </h2>
           <div className="transactions">
-            {incomes.map((item) => <HistoryItem key={item.id} item={item} />)}
+            {incomes.map((item) => (
+              <HistoryItem
+                key={item.id}
+                item={item}
+                onEdit={() => editTransaction(item)}
+                onDelete={() => deleteTransaction(item.id)}
+              />
+            ))}
           </div>
         </section>
 
         <section className="panel">
-          <h2><ArrowDownCircle size={18} /> Histórico de Saídas</h2>
+          <h2>
+            <ArrowDownCircle size={18} /> Histórico de Saídas
+          </h2>
           <div className="transactions">
-            {expenses.map((item) => <HistoryItem key={item.id} item={item} />)}
+            {expenses.map((item) => (
+              <HistoryItem
+                key={item.id}
+                item={item}
+                onEdit={() => editTransaction(item)}
+                onDelete={() => deleteTransaction(item.id)}
+              />
+            ))}
           </div>
         </section>
       </section>
@@ -536,6 +775,25 @@ export default function App() {
           gap: 8px;
         }
 
+        .secondary {
+          background: rgba(255,255,255,0.14);
+        }
+
+        .small-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .icon-button {
+          padding: 10px;
+          border-radius: 12px;
+        }
+
+        .danger-button {
+          background: rgba(220,38,38,0.75);
+        }
+
         .progress {
           height: 12px;
           background: rgba(255,255,255,0.12);
@@ -609,14 +867,30 @@ function Card({ icon, title, value }) {
   );
 }
 
-function HistoryItem({ item }) {
+function HistoryItem({ item, onEdit, onDelete }) {
   return (
     <div className="transaction">
       <div>
         <strong>{item.description}</strong>
-        <p>{item.date} • {item.category} • {item.paymentMethod}</p>
+        <p>
+          {item.date} • {item.category} • {item.paymentMethod}
+          {item.paymentMethod === "Cartão de Crédito" &&
+            Number(item.installments || 1) > 1 &&
+            ` • ${item.installments}x`}
+        </p>
       </div>
-      <strong>{money(item.amount)}</strong>
+
+      <div className="transaction-right">
+        <strong>{money(item.amount)}</strong>
+        <div className="small-actions">
+          <button className="icon-button" onClick={onEdit}>
+            <Pencil size={16} />
+          </button>
+          <button className="icon-button danger-button" onClick={onDelete}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
